@@ -1,0 +1,113 @@
+﻿@page "/ServerDetails"
+@using SyncServer.Data
+@inject IJSRuntime JsRun
+@using System.Security.Cryptography
+@using Microsoft.Data.SqlClient
+
+<h3>ServerDetails</h3>
+
+<EditForm Model="@server" OnSubmit="Validation">
+        <label for="ServerName">ServerName</label><br>
+        <InputText id="ServerName" @bind-Value="server.ServerName" class="Form"></InputText><br>
+        <label for="PortNumber">PortNumber</label><br>
+    <InputText id="PortNumber" @bind-Value="@server.PortNumber" class="Form"></InputText><br>
+        <label for="UserName">UserName</label><br>
+    <InputText id="UserName" @bind-Value="@server.UserID" class="Form"></InputText><br>
+        <label for="Password">Password</label><br>
+    <InputText id="Password" @bind-Value="@server.Password" class="Form"></InputText><br><br>
+        <button type="submit">Save</button>
+</EditForm>
+
+
+@code {
+    Server server = new();
+    List<Server> serverList = new List<Server>();
+    List<Server> encryptServerList = new List<Server>();
+    string[] encryptArray = new string[4];
+
+    public void Validation(EditContext context)
+    {
+
+        //ReadFiles();
+        byte[] key = new byte[16];
+        byte[] iv = new byte[16];
+        using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
+        {
+            rng.GetBytes(key);
+            rng.GetBytes(iv);
+        }
+        Server servers = new Server(server.ServerName, server.PortNumber, server.UserID, server.Password);
+        serverList.Add(servers);
+        string encryptServerName = Security(server.ServerName.ToString(),key,iv);
+        string encryptPortNumber = Security(server.PortNumber.ToString(),key,iv);
+        string encryptUserID = Security(server.UserID.ToString(),key,iv);
+        string encryptPassword = Security(server.Password.ToString(),key,iv);
+        Server encryptObj = new Server(encryptServerName, encryptPortNumber, encryptUserID, encryptPassword);
+        encryptServerList.Add(encryptObj);
+
+        if(!Directory.Exists("ServerConnection"))
+        {
+            Directory.CreateDirectory("ServerConnection");
+        }
+        if(!File.Exists("ConnectionDetails"))
+        {
+            File.Create("ServerConnection/ConnectionDetails.csv").Close();
+        }
+
+        string[] serverDetails = new string[serverList.Count];
+        for (int i = 0; i < encryptServerList.Count; i++)
+        {
+            serverDetails[i] = encryptServerList[i].ServerName + "," + encryptServerList[i].PortNumber + "," + encryptServerList[i].UserID + "," + encryptServerList[i].Password;
+        }
+
+        File.WriteAllLines("ServerConnection/ConnectionDetails.csv", serverDetails);
+        SqlConnection connection = new SqlConnection($"Server={server.ServerName},{server.PortNumber};Database=EncryptedDetails;TrustServerCertificate=True;Integrated Security=True;User Id=SA;Password=Dinesh@180801"); 
+        string query = @"insert into serverdetails values('Dinesh','56','56','kish')";
+        SqlCommand cmd = new SqlCommand(query, connection);
+        connection.Open();
+        cmd.ExecuteNonQuery();
+        connection.Close();
+
+        server.ServerName = "";
+        server.PortNumber = "";
+        server.UserID = "";
+        server.Password = "";
+
+    }
+    public void ReadFiles()
+    {
+        string[] connection = File.ReadAllLines("ServerConnection/ConnectionDetails.csv");
+        foreach (string conn in connection)
+        {
+            serverList.Add(new Server(conn));
+        }
+    }
+    public string Security(string input, byte[] key, byte[] iv)
+    {
+        byte[] encryptedInput = Encrypt(input, key, iv);
+        string encryptedInputString = Convert.ToBase64String(encryptedInput);
+        return encryptedInputString;
+    }
+    public byte[] Encrypt(string input,byte[] key,byte[] iv)
+    {
+        byte[] cyphertext;
+        using(Aes aes=Aes.Create())
+        {
+            ICryptoTransform encryptor = aes.CreateEncryptor(key, iv);
+            using(MemoryStream memoryStream = new MemoryStream())
+            {
+                using(CryptoStream cryptoStream=new CryptoStream(memoryStream,encryptor,CryptoStreamMode.Write))
+                {
+                    using(StreamWriter streamWriter=new StreamWriter(cryptoStream))
+                    {
+                        streamWriter.Write(input);
+                    }
+                    cyphertext = memoryStream.ToArray();
+                }
+            }
+        }
+        return cyphertext;
+    }
+    
+
+}
